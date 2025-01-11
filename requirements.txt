@@ -1,0 +1,6 @@
+git+https://github.com/nashspence/home-index.git
+debugpy
+transformers
+wand
+pillow
+python-ffmpeg

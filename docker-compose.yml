@@ -1,0 +1,60 @@
+x-gpu-service: &allow-gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [ gpu ]
+  ulimits:
+    memlock:
+      soft: -1
+      hard: -1
+    stack:
+      soft: 67108864
+      hard: 67108864
+
+services:
+  home-index-caption:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: home-index-caption
+    environment:
+      - DEBUG=True
+      - TZ=America/Los_Angeles
+      - WAIT_FOR_DEBUGPY_CLIENT=True
+    ports:
+      - '5678:5678' # debugpy
+    restart: unless-stopped
+    volumes:
+      - ./bind-mounts/files:/files
+      - ./bind-mounts/home-index-caption/huggingface:/huggingface
+      - ./bind-mounts/home-index-caption/imagemagick/policy.xml:/etc/ImageMagick-6/policy.xml
+    <<: *allow-gpu
+  meilisearch:
+    container_name: meilisearch
+    environment:
+      - MEILI_NO_ANALYTICS=true
+      - TZ=America/Los_Angeles
+    image: getmeili/meilisearch:latest
+    restart: unless-stopped
+    volumes:
+      - ./bind-mounts/meilisearch:/meili_data
+  home-index:
+    build:
+      context: https://github.com/nashspence/home-index.git
+      dockerfile: Dockerfile
+    container_name: home-index
+    depends_on:
+      - meilisearch
+      - home-index-caption
+    environment:
+      - DEBUG=True
+      - MODULES=http://home-index-caption:9000
+      - MEILISEARCH_HOST=http://meilisearch:7700
+      - TZ=America/Los_Angeles
+    restart: unless-stopped
+    volumes:
+      - ./bind-mounts/home-index:/home-index
+      - ./bind-mounts/files:/files
