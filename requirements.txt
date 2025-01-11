@@ -3,4 +3,4 @@ debugpy
 transformers
 wand
 pillow
-python-ffmpeg
+ffmpeg-python

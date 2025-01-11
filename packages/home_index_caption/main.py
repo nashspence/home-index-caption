@@ -38,9 +38,8 @@ from home_index_module import run_server
 VERSION = 1
 NAME = os.environ.get("NAME", "caption")
 
-LANGUAGES = str(os.environ.get("LANGUAGES", "en")).split(",")
 RESIZE_MAX_DIMENSION = int(os.environ.get("RESIZE_MAX_DIMENSION", 640))
-VIDEO_NUMBER_OF_FRAMES = int(os.environ.get("VIDEO_NUMBER_OF_FRAMES", 5))
+VIDEO_NUMBER_OF_FRAMES = int(os.environ.get("VIDEO_NUMBER_OF_FRAMES", 10))
 DEVICE = str(os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu"))
 os.environ["HF_HOME"] = str(os.environ.get("HF_HOME", "/huggingface"))
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = str(
@@ -52,16 +51,14 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = str(
 # region "read images"
 
 
-def resize_image_bytes_maintain_aspect(img):
+def resize_image_maintain_aspect(img):
     width, height = img.width, img.height
     largest_side = max(width, height)
-    new_width = None
-    new_height = None
     if largest_side > RESIZE_MAX_DIMENSION:
         ratio = RESIZE_MAX_DIMENSION / float(largest_side)
         new_width = int(width * ratio)
         new_height = int(height * ratio)
-        img.resize(new_width, new_height)
+        return img.resize((new_width, new_height))
     return img
 
 
@@ -97,7 +94,8 @@ def read_video(video_path):
                 retries -= 1
         if len(out) > 0:
             image = PILImage.open(io.BytesIO(out)).convert("RGB")
-            frames.append(image)
+            resized_image = resize_image_maintain_aspect(image)
+            frames.append(resized_image)
         else:
             frames.append(None)
     return frames
@@ -113,7 +111,8 @@ def read_image(file_path):
             single_frame.format = "png"
             blob = single_frame.make_blob()
             pillow_image = PILImage.open(io.BytesIO(blob)).convert("RGB")
-            return pillow_image
+            resized_image = resize_image_maintain_aspect(pillow_image)
+            return resized_image
 
 
 # endregion
@@ -139,8 +138,9 @@ processor = None
 
 def load():
     global model, processor
-    print(f"cuda.memory_allocated={torch.cuda.memory_allocated()}")
-    print(f"cuda.memory_reserved={torch.cuda.memory_reserved()}")
+    print(
+        f"cuda_mem alloc={torch.cuda.memory_allocated() / (1024 ** 3):.2f}GB reserved={torch.cuda.memory_reserved() / (1024 ** 3):.2f}GB"
+    )
 
     from transformers import BlipProcessor, BlipForConditionalGeneration
 
@@ -158,6 +158,9 @@ def unload():
     del processor
     gc.collect()
     torch.cuda.empty_cache()
+    print(
+        f"cuda_mem alloc={torch.cuda.memory_allocated() / (1024 ** 3):.2f}GB reserved={torch.cuda.memory_reserved() / (1024 ** 3):.2f}GB"
+    )
 
 
 # endregion
@@ -200,8 +203,8 @@ def run(file_path, document, metadata_dir_path):
         else:
             images.append(read_image(file_path))
         for image in images:
-            input = processor(image, return_tensors="pt").to(DEVICE)
-            outputs = model.generate(input)
+            inputs = processor(images=image, return_tensors="pt").to(DEVICE)
+            outputs = model.generate(**inputs)
             captions.append(processor.decode(outputs[0], skip_special_tokens=True))
             gc.collect()
             torch.cuda.empty_cache()
