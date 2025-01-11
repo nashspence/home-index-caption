@@ -25,6 +25,8 @@ import torch
 import gc
 import io
 import ffmpeg
+import subprocess
+import mimetypes
 
 from PIL import Image as PILImage
 from wand.image import Image as WandImage
@@ -162,24 +164,54 @@ def unload():
 # region "check/run"
 
 
+def get_supported_formats():
+    result = subprocess.run(
+        ["identify", "-list", "format"], capture_output=True, text=True
+    )
+    lines = result.stdout.splitlines()
+    supported = set()
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("-") and not line.startswith("Format"):
+            parts = line.split()
+            if len(parts) >= 2:
+                ext = parts[0].lower().rstrip("*")
+                modes = parts[2]
+                if "r" in modes:
+                    supported.add(ext)
+    return supported
+
+
+SUPPORTED_FORMATS = get_supported_formats()
+
+
+def get_extensions_from_mime(mime_type):
+    return mimetypes.guess_all_extensions(mime_type)
+
+
+def can_wand_open(mime_type):
+    extensions = get_extensions_from_mime(mime_type)
+    for ext in extensions:
+        if ext.lstrip(".").lower() in SUPPORTED_FORMATS:
+            return True
+    return False
+
+
 def check(file_path, document, metadata_dir_path):
     version_path = metadata_dir_path / "version.json"
     version = None
+
     if version_path.exists():
         with open(version_path, "r") as file:
             version = json.load(file)
 
-    if version and version["version"] == VERSION:
+    if version and version.get("version") == VERSION:
         return False
+
     if document["type"].startswith("audio/"):
         return False
-    if document["type"].startswith("video/"):
-        return True
-    try:
-        with WandImage(filename=file_path):
-            return True
-    except Exception:
-        return False
+
+    return can_wand_open(document["type"])
 
 
 def run(file_path, document, metadata_dir_path):
@@ -206,6 +238,8 @@ def run(file_path, document, metadata_dir_path):
         document[NAME]["text"] = caption
         with open(frame_captions_path, "w") as file:
             json.dump(frame_captions, file, indent=4)
+    except FileNotFoundError as e:
+        raise e
     except Exception as e:
         exception = e
         logging.exception("failed")
