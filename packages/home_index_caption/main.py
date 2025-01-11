@@ -205,9 +205,8 @@ def run(file_path, document, metadata_dir_path):
         for image in images:
             inputs = processor(images=image, return_tensors="pt").to(DEVICE)
             outputs = model.generate(**inputs)
-            captions.append(processor.decode(outputs[0], skip_special_tokens=True))
-            gc.collect()
-            torch.cuda.empty_cache()
+            caption = processor.decode(outputs[0], skip_special_tokens=True)
+            captions.append(caption)
         caption = " ".join(captions)
         document[NAME] = {}
         document[NAME]["text"] = caption
