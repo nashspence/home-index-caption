@@ -39,7 +39,7 @@ VERSION = 1
 NAME = os.environ.get("NAME", "caption")
 
 RESIZE_MAX_DIMENSION = int(os.environ.get("RESIZE_MAX_DIMENSION", 640))
-VIDEO_NUMBER_OF_FRAMES = int(os.environ.get("VIDEO_NUMBER_OF_FRAMES", 10))
+VIDEO_NUMBER_OF_FRAMES = int(os.environ.get("VIDEO_NUMBER_OF_FRAMES", 20))
 DEVICE = str(os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu"))
 os.environ["HF_HOME"] = str(os.environ.get("HF_HOME", "/huggingface"))
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = str(
@@ -196,12 +196,11 @@ def run(file_path, document, metadata_dir_path):
 
     exception = None
     try:
-        images = []
         captions = []
         if document["type"].startswith("video/"):
-            images.append(read_video(file_path))
+            images = read_video(file_path)
         else:
-            images.append(read_image(file_path))
+            images = [read_image(file_path)]
         for image in images:
             inputs = processor(images=image, return_tensors="pt").to(DEVICE)
             outputs = model.generate(**inputs)
