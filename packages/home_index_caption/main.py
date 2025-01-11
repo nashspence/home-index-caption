@@ -72,7 +72,7 @@ def read_video(video_path):
         i * safe_duration / (VIDEO_NUMBER_OF_FRAMES - 1)
         for i in range(VIDEO_NUMBER_OF_FRAMES)
     ]
-    frames = []
+    frames_with_timestamps = []
 
     def get_frame_at_time(t: float):
         out, _ = (
@@ -95,10 +95,11 @@ def read_video(video_path):
         if len(out) > 0:
             image = PILImage.open(io.BytesIO(out)).convert("RGB")
             resized_image = resize_image_maintain_aspect(image)
-            frames.append(resized_image)
+            frames_with_timestamps.append((resized_image, t))
         else:
-            frames.append(None)
-    return frames
+            frames_with_timestamps.append((None, t))
+
+    return frames_with_timestamps
 
 
 def read_image(file_path):
@@ -112,7 +113,7 @@ def read_image(file_path):
             blob = single_frame.make_blob()
             pillow_image = PILImage.open(io.BytesIO(blob)).convert("RGB")
             resized_image = resize_image_maintain_aspect(pillow_image)
-            return resized_image
+            return (resized_image, 0)
 
 
 # endregion
@@ -134,14 +135,11 @@ def hello():
 
 model = None
 processor = None
+summarizer = None
 
 
 def load():
-    global model, processor
-    print(
-        f"cuda_mem alloc={torch.cuda.memory_allocated() / (1024 ** 3):.2f}GB reserved={torch.cuda.memory_reserved() / (1024 ** 3):.2f}GB"
-    )
-
+    global model, processor, summarizer
     from transformers import BlipProcessor, BlipForConditionalGeneration
 
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
@@ -158,9 +156,6 @@ def unload():
     del processor
     gc.collect()
     torch.cuda.empty_cache()
-    print(
-        f"cuda_mem alloc={torch.cuda.memory_allocated() / (1024 ** 3):.2f}GB reserved={torch.cuda.memory_reserved() / (1024 ** 3):.2f}GB"
-    )
 
 
 # endregion
@@ -192,25 +187,25 @@ def run(file_path, document, metadata_dir_path):
     logging.info(f"start {file_path}")
 
     version_path = metadata_dir_path / "version.json"
-    plaintext_path = metadata_dir_path / "caption.txt"
+    frame_captions_path = metadata_dir_path / "frame_captions.json"
 
     exception = None
     try:
-        captions = []
+        frame_captions = []
         if document["type"].startswith("video/"):
-            images = read_video(file_path)
+            frames = read_video(file_path)
         else:
-            images = [read_image(file_path)]
-        for image in images:
+            frames = [read_image(file_path)]
+        for image, timestamp in frames:
             inputs = processor(images=image, return_tensors="pt").to(DEVICE)
             outputs = model.generate(**inputs)
             caption = processor.decode(outputs[0], skip_special_tokens=True)
-            captions.append(caption)
-        caption = " ".join(captions)
+            frame_captions.append((timestamp, caption))
+        caption = " ".join([caption for _, caption in frame_captions])
         document[NAME] = {}
         document[NAME]["text"] = caption
-        with open(plaintext_path, "w") as file:
-            file.write(caption)
+        with open(frame_captions_path, "w") as file:
+            json.dump(frame_captions, file, indent=4)
     except Exception as e:
         exception = e
         logging.exception("failed")

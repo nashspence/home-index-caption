@@ -1,7 +1,7 @@
 .env
 /bind-mounts/home-index
 /bind-mounts/files/metadata
-/bind-mounts/home-index-caption
+/bind-mounts/home-index-caption/huggingface
 /bind-mounts/meilisearch
 docker-compose.override*.yml
 docker-data
