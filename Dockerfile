@@ -3,17 +3,21 @@ FROM pytorch/pytorch:latest
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
+    wget \
     attr \
     file \
     git \
     tzdata \
-    imagemagick \
-    libgomp1 \
-    dcraw \
-    libraw-bin \
-    ghostscript \
     rustc \
     && apt-get clean
+
+# run imagemagick easy installer
+RUN t=$(mktemp) && \
+    wget 'https://dist.1-2.dev/imei.sh' -qO "$t" && \
+    bash "$t" && \
+    rm "$t"
+
+RUN identify -version
 
 WORKDIR /app
 
